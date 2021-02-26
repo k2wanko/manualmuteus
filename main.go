@@ -1,38 +1,50 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 
-	"github.com/bwmarrin/discordgo"
-)
+	"github.com/joho/godotenv"
 
-var (
-	discordToken         = os.Getenv("DISCORD_TOKEN")
-	discordTextChannelID = os.Getenv("DISCORD_TEXT_CHANNEL_ID")
+	"github.com/miyukki/manualmuteus/bot"
 )
 
 func main() {
-	discord, err := discordgo.New("Bot " + discordToken)
+	var err error
+	err = godotenv.Load()
 	if err != nil {
-		fmt.Println("error creating Discord session,", err)
-		os.Exit(1)
+		log.Printf("failed to load .env file: %v", err)
 	}
 
-	err = discord.Open()
+	var b bot.Bot
+	b, err = bot.New(&bot.Config{
+		Token:                  os.Getenv("TOKEN"),
+		GuildID:                os.Getenv("GUILD_ID"),
+		LobbyChannelID:         os.Getenv("LOBBY_CHANNEL_ID"),
+		LobbyVoiceChannelID:    os.Getenv("LOBBY_VOICE_CHANNEL_ID"),
+		BoothVoiceChannelIDs:   strings.Split(os.Getenv("BOOTH_VOICE_CHANNEL_IDS"), ","),
+		ImposterVoiceChannelID: os.Getenv("IMPOSTER_VOICE_CHANNEL_ID"),
+		LimboVoiceChannelID:    os.Getenv("LIMBO_VOICE_CHANNEL_ID"),
+	})
 	if err != nil {
-		fmt.Println("error opening Discord session,", err)
-		os.Exit(1)
+		log.Fatalf("failed to initialize bot")
 	}
-	defer func() {
-		if err := discord.Close(); err != nil {
-			fmt.Println("error closing Discord session,", err)
-		}
-	}()
 
-	_, err = discord.ChannelMessageSend(discordTextChannelID, "hello, world!")
+	err = b.Start()
 	if err != nil {
-		fmt.Println("error sending message,", err)
-		os.Exit(1)
+		log.Fatalf("failed to start bot")
+	}
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGKILL, syscall.SIGTERM, syscall.SIGINT, os.Interrupt)
+	s := <-sig
+	log.Printf("singal received: %s", s)
+
+	err = b.Stop()
+	if err != nil {
+		log.Fatalf("failed to stop bot")
 	}
 }
